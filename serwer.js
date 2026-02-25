@@ -6,41 +6,35 @@ const fs = require('fs');
 const app = express();
 const port = process.env.PORT || 3000;
 
-// Funkcja szukająca certyfikatu w folderze
+// DEBUG: Wypisz wszystkie pliki w logach Rendera
 const files = fs.readdirSync(__dirname);
-const certFile = files.find(f => f.includes('nexity') && (f.endsWith('.key') || f.endsWith('.pem') || f.endsWith('.pfx')));
+console.log("LISTA PLIKÓW NA SERWERZE:", files);
+
+const certFile = files.find(f => f.toLowerCase().includes('nexity') && (f.endsWith('.key') || f.endsWith('.pem') || f.endsWith('.pfx')));
 
 const store = new DocumentStore('https://a.free.nexity.ravendb.cloud', 'NexityDB');
 
 if (certFile) {
-    console.log(`POŁĄCZENIE: Znaleziono certyfikat: ${certFile}`);
-    const certPath = path.join(__dirname, certFile);
-    
-    // Konfiguracja autoryzacji
+    console.log(`SUKCES: Używam certyfikatu: ${certFile}`);
     store.authOptions = {
-        certificate: fs.readFileSync(certPath),
+        certificate: fs.readFileSync(path.join(__dirname, certFile)),
         type: certFile.endsWith('.pfx') ? 'pfx' : 'pem'
     };
 } else {
-    console.error("BŁĄD KRYTYCZNY: Nie znaleziono pliku certyfikatu na GitHubie!");
+    console.error("ALARM: Na liście plików wyżej nie widzę certyfikatu Nexity!");
 }
 
 store.initialize();
-
 app.use(express.static(path.join(__dirname)));
 
-// Endpoint do pobierania logów
 app.get('/api/logs', async (req, res) => {
     try {
         const session = store.openSession();
-        const logs = await session.query({ collection: 'Logs' })
-            .orderByDescending('Timestamp')
-            .take(20)
-            .toList();
+        const logs = await session.query({ collection: 'Logs' }).orderByDescending('Timestamp').take(20).toList();
         res.json(logs);
     } catch (err) {
-        console.error('Błąd połączenia z bazą w USA:', err.message);
-        res.status(500).json({ error: 'Baza danych odrzuciła połączenie (sprawdź certyfikat)' });
+        console.error('BŁĄD BAZY:', err.message);
+        res.status(500).json({ error: err.message });
     }
 });
 
@@ -49,5 +43,6 @@ app.get('/', (req, res) => {
 });
 
 app.listen(port, () => {
-    console.log(`NEXITY SYSTEM gotowy na porcie ${port}`);
+    console.log(`System NEXITY aktywny na porcie ${port}`);
 });
+
