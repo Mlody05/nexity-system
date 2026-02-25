@@ -6,43 +6,53 @@ const fs = require('fs');
 const app = express();
 const port = process.env.PORT || 3000;
 
-// DEBUG: Wypisz wszystkie pliki w logach Rendera
-const files = fs.readdirSync(__dirname);
-console.log("LISTA PLIKÓW NA SERWERZE:", files);
+// 1. Sprawdzanie plików (Debug)
+const directoryPath = __dirname;
+const files = fs.readdirSync(directoryPath);
+console.log("--- DEBUG SYSTEMU NEXITY ---");
+console.log("FOLDER ROBOCZY:", directoryPath);
+console.log("PLIKI W FOLDERZE:", files);
 
-const certFile = files.find(f => f.toLowerCase().includes('nexity') && (f.endsWith('.key') || f.endsWith('.pem') || f.endsWith('.pfx')));
+// 2. Szukanie certyfikatu
+const certFile = files.find(f => f.toLowerCase().includes('nexity') && (f.endsWith('.key') || f.endsWith('.pem')));
 
-const store = new DocumentStore('https://a.free.nexity.ravendb.cloud', 'NexityDB');
+let store = null;
 
 if (certFile) {
-    console.log(`SUKCES: Używam certyfikatu: ${certFile}`);
+    console.log("ZNALAZŁEM CERTYFIKAT:", certFile);
+    store = new DocumentStore('https://a.free.nexity.ravendb.cloud', 'NexityDB');
     store.authOptions = {
-        certificate: fs.readFileSync(path.join(__dirname, certFile)),
-        type: certFile.endsWith('.pfx') ? 'pfx' : 'pem'
+        certificate: fs.readFileSync(path.join(directoryPath, certFile)),
+        type: 'pem'
     };
+    store.initialize();
 } else {
-    console.error("ALARM: Na liście plików wyżej nie widzę certyfikatu Nexity!");
+    console.log("BRAK CERTYFIKATU! System nie połączy się z USA.");
 }
 
-store.initialize();
-app.use(express.static(path.join(__dirname)));
+// 3. Obsługa strony i danych
+app.use(express.static(directoryPath));
 
 app.get('/api/logs', async (req, res) => {
+    if (!store) return res.status(500).json({ error: "Brak autoryzacji (certyfikatu)" });
+    
     try {
         const session = store.openSession();
         const logs = await session.query({ collection: 'Logs' }).orderByDescending('Timestamp').take(20).toList();
         res.json(logs);
     } catch (err) {
-        console.error('BŁĄD BAZY:', err.message);
+        console.log("BŁĄD POBIERANIA:", err.message);
         res.status(500).json({ error: err.message });
     }
 });
 
+// Główne wejście
 app.get('/', (req, res) => {
-    res.sendFile(path.join(__dirname, 'index.html'));
+    res.sendFile(path.join(directoryPath, 'index.html'));
 });
 
 app.listen(port, () => {
-    console.log(`System NEXITY aktywny na porcie ${port}`);
+    console.log("SERWER URUCHOMIONY POPRAWNIE");
+    console.log("---------------------------");
 });
 
