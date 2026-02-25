@@ -8,8 +8,6 @@ const port = process.env.PORT || 3000;
 
 const directoryPath = __dirname;
 const files = fs.readdirSync(directoryPath);
-
-// Szukanie certyfikatu
 const certFile = files.find(f => f.toLowerCase().includes('nexity') && (f.endsWith('.key') || f.endsWith('.pem')));
 
 let store = null;
@@ -21,27 +19,29 @@ if (certFile) {
         type: 'pem'
     };
     store.initialize();
-    console.log("SYSTEM: Baza RavenDB zainicjalizowana poprawnie.");
 }
 
 app.use(express.static(directoryPath));
 
-// POPRAWIONY ENDPOINT DANYCH
+// WERSJA PANCERNA - POBIERANIE BEZPOŚREDNIE
 app.get('/api/logs', async (req, res) => {
-    if (!store) return res.status(500).json({ error: "Brak inicjalizacji bazy" });
+    if (!store) return res.status(500).json({ error: "Brak certyfikatu" });
     
     try {
         const session = store.openSession();
-        // Nowa składnia zapytania dla RavenDB
-        const logs = await session.query({ collection: 'Logs' })
-            .orderByDescending('Timestamp')
-            .take(20)
-            .all(); // Zmieniono z toList() na all()
-            
-        res.json(logs);
+        // Pobieramy dokumenty bezpośrednio z kolekcji 'Logs'
+        const logs = await session.loadStartingWith('Logs/', {
+            pageSize: 25
+        });
+        
+        // RavenDB zwraca obiekt, zamieniamy go na listę dla Twojej strony
+        const listaLogow = Object.values(logs).reverse();
+        
+        console.log(`Pobrano ${listaLogow.length} logów z USA.`);
+        res.json(listaLogow);
     } catch (err) {
-        console.log("BŁĄD POBIERANIA:", err.message);
-        res.status(500).json({ error: "Problem z zapytaniem do bazy w USA" });
+        console.log("BŁĄD KRYTYCZNY BAZY:", err.message);
+        res.status(500).json({ error: err.message });
     }
 });
 
@@ -50,7 +50,7 @@ app.get('/', (req, res) => {
 });
 
 app.listen(port, () => {
-    console.log(`NEXITY ONLINE | Port: ${port}`);
+    console.log(`NEXITY SYSTEM GOTOWY`);
 });
 
 
