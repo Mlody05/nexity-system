@@ -4,53 +4,57 @@ const path = require('path');
 const fs = require('fs');
 
 const app = express();
-const port = process.env.PORT || 3000;
+const port = process.env.PORT || 10000;
 
-const directoryPath = __dirname;
-const files = fs.readdirSync(directoryPath);
-const certFile = files.find(f => f.toLowerCase().includes('nexity') && (f.endsWith('.key') || f.endsWith('.pem')));
+// PARAMETRY TWOJEGO SYSTEMU
+const dbUrl = 'https://a.free.nexity.ravendb.cloud';
+const dbName = 'NexityDB';
+const certName = 'free.nexity.client.certificate.key'; // Upewnij się, że to DOKŁADNA nazwa na GitHubie
 
-let store = null;
+const certPath = path.join(__dirname, certName);
 
-if (certFile) {
-    store = new DocumentStore('https://a.free.nexity.ravendb.cloud', 'NexityDB');
-    store.authOptions = {
-        certificate: fs.readFileSync(path.join(directoryPath, certFile)),
-        type: 'pem'
-    };
-    store.initialize();
+// 1. Sprawdzenie czy plik fizycznie istnieje przed startem
+if (!fs.existsSync(certPath)) {
+    console.error(`!!! ALARM: Plik ${certName} NIE ISTNIEJE w folderze serwera !!!`);
 }
 
-app.use(express.static(directoryPath));
+// 2. Konfiguracja Store z wymuszonym certyfikatem
+const authOptions = {
+    certificate: fs.readFileSync(certPath),
+    type: 'pem'
+};
 
-// WERSJA PANCERNA - POBIERANIE BEZPOŚREDNIE
+const store = new DocumentStore(dbUrl, dbName);
+store.authOptions = authOptions;
+store.initialize();
+
+console.log("NEXITY: System autoryzacji zainicjalizowany.");
+
+app.use(express.static(__dirname));
+
+// 3. Endpoint pobierania danych
 app.get('/api/logs', async (req, res) => {
-    if (!store) return res.status(500).json({ error: "Brak certyfikatu" });
-    
     try {
         const session = store.openSession();
-        // Pobieramy dokumenty bezpośrednio z kolekcji 'Logs'
-        const logs = await session.loadStartingWith('Logs/', {
-            pageSize: 25
-        });
-        
-        // RavenDB zwraca obiekt, zamieniamy go na listę dla Twojej strony
-        const listaLogow = Object.values(logs).reverse();
-        
-        console.log(`Pobrano ${listaLogow.length} logów z USA.`);
-        res.json(listaLogow);
+        // Najbezpieczniejsza metoda pobierania danych
+        const logs = await session.query({ collection: 'Logs' })
+            .orderByDescending('Timestamp')
+            .take(20)
+            .all();
+            
+        res.json(logs);
     } catch (err) {
-        console.log("BŁĄD KRYTYCZNY BAZY:", err.message);
-        res.status(500).json({ error: err.message });
+        console.error("BŁĄD KOMUNIKACJI Z USA:", err.message);
+        res.status(500).json({ error: "Błąd autoryzacji certyfikatu" });
     }
 });
 
 app.get('/', (req, res) => {
-    res.sendFile(path.join(directoryPath, 'index.html'));
+    res.sendFile(path.join(__dirname, 'index.html'));
 });
 
 app.listen(port, () => {
-    console.log(`NEXITY SYSTEM GOTOWY`);
+    console.log(`>>> SYSTEM NEXITY DZIAŁA NA PORCIE ${port} <<<`);
 });
 
 
