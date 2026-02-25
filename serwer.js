@@ -6,53 +6,51 @@ const fs = require('fs');
 const app = express();
 const port = process.env.PORT || 3000;
 
-// 1. Sprawdzanie plików (Debug)
 const directoryPath = __dirname;
 const files = fs.readdirSync(directoryPath);
-console.log("--- DEBUG SYSTEMU NEXITY ---");
-console.log("FOLDER ROBOCZY:", directoryPath);
-console.log("PLIKI W FOLDERZE:", files);
 
-// 2. Szukanie certyfikatu
+// Szukanie certyfikatu
 const certFile = files.find(f => f.toLowerCase().includes('nexity') && (f.endsWith('.key') || f.endsWith('.pem')));
 
 let store = null;
 
 if (certFile) {
-    console.log("ZNALAZŁEM CERTYFIKAT:", certFile);
     store = new DocumentStore('https://a.free.nexity.ravendb.cloud', 'NexityDB');
     store.authOptions = {
         certificate: fs.readFileSync(path.join(directoryPath, certFile)),
         type: 'pem'
     };
     store.initialize();
-} else {
-    console.log("BRAK CERTYFIKATU! System nie połączy się z USA.");
+    console.log("SYSTEM: Baza RavenDB zainicjalizowana poprawnie.");
 }
 
-// 3. Obsługa strony i danych
 app.use(express.static(directoryPath));
 
+// POPRAWIONY ENDPOINT DANYCH
 app.get('/api/logs', async (req, res) => {
-    if (!store) return res.status(500).json({ error: "Brak autoryzacji (certyfikatu)" });
+    if (!store) return res.status(500).json({ error: "Brak inicjalizacji bazy" });
     
     try {
         const session = store.openSession();
-        const logs = await session.query({ collection: 'Logs' }).orderByDescending('Timestamp').take(20).toList();
+        // Nowa składnia zapytania dla RavenDB
+        const logs = await session.query({ collection: 'Logs' })
+            .orderByDescending('Timestamp')
+            .take(20)
+            .all(); // Zmieniono z toList() na all()
+            
         res.json(logs);
     } catch (err) {
         console.log("BŁĄD POBIERANIA:", err.message);
-        res.status(500).json({ error: err.message });
+        res.status(500).json({ error: "Problem z zapytaniem do bazy w USA" });
     }
 });
 
-// Główne wejście
 app.get('/', (req, res) => {
     res.sendFile(path.join(directoryPath, 'index.html'));
 });
 
 app.listen(port, () => {
-    console.log("SERWER URUCHOMIONY POPRAWNIE");
-    console.log("---------------------------");
+    console.log(`NEXITY ONLINE | Port: ${port}`);
 });
+
 
