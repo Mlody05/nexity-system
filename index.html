@@ -1,30 +1,114 @@
 <!DOCTYPE html>
 <html lang="pl">
 <head>
-  <meta charset="UTF-8">
-  <title>NEXITY SYSTEM</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <style>
-    body {
-      background: black;
-      color: #00ff88;
-      font-family: monospace;
-      padding: 30px;
-    }
-    h1 {
-      color: #00ffcc;
-    }
-  </style>
+    <meta charset="UTF-8">
+    <title>NEXITY SYSTEM OPERACYJNY</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        body {
+            background: #0a0a0a;
+            color: #00ff88;
+            font-family: 'Courier New', monospace;
+            padding: 30px;
+            line-height: 1.6;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            border: 1px solid #00ff88;
+            padding: 20px;
+            box-shadow: 0 0 15px rgba(0, 255, 136, 0.2);
+        }
+        h1 {
+            color: #00ffcc;
+            text-align: center;
+            border-bottom: 2px solid #00ffcc;
+            padding-bottom: 10px;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+        }
+        .status {
+            font-weight: bold;
+            color: #00ffcc;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+        .status::before {
+            content: "● ";
+            color: #00ffcc;
+        }
+        h3 {
+            border-left: 4px solid #00ffcc;
+            padding-left: 10px;
+            margin-top: 30px;
+        }
+        .events {
+            background: rgba(0, 255, 136, 0.05);
+            padding: 15px;
+            border-radius: 5px;
+            min-height: 100px;
+            white-space: pre-wrap;
+        }
+        .log-entry {
+            margin-bottom: 8px;
+            border-bottom: 1px solid rgba(0, 255, 136, 0.1);
+            padding-bottom: 4px;
+        }
+        .timestamp {
+            color: #888;
+            font-size: 0.9em;
+            margin-right: 10px;
+        }
+    </style>
 </head>
 <body>
 
-<h1>NEXITY SYSTEM OPERACYJNY</h1>
-<p class="status">Status połączenia: AKTYWNY (USA)</p>
+<div class="container">
+    <h1>NEXITY SYSTEM OPERACYJNY</h1>
+    <p class="status">Status połączenia: AKTYWNY (USA)</p>
 
-<h3>Ostatnie zdarzenia systemowe:</h3>
-<p class="events">Brak danych w bazie. Uruchamianie...</p>
+    <h3>Ostatnie zdarzenia systemowe:</h3>
+    <div class="events" id="log-container">Inicjalizacja systemu... Czekanie na dane z USA...</div>
+</div>
 
-<script src="app.js"></script>
+<script>
+    async function pobierzLogi() {
+        const container = document.getElementById('log-container');
+        try {
+            // Zapytanie do Twojego serwera na Renderze
+            const response = await fetch('/api/logs');
+            
+            if (!response.ok) {
+                throw new Error('Błąd serwera');
+            }
+
+            const dane = await response.json();
+            
+            if (!dane || dane.length === 0) {
+                container.innerHTML = "Połączono z bazą NexityDB. Brak nowych zdarzeń w USA (Kolekcja 'Logs' jest pusta).";
+                return;
+            }
+
+            // Generowanie listy logów
+            container.innerHTML = dane.map(log => `
+                <div class="log-entry">
+                    <span class="timestamp">[${log.Timestamp || new Date().toLocaleString()}]</span>
+                    <span class="message">${log.Message || 'Zarejestrowano aktywność systemową'}</span>
+                </div>
+            `).join('');
+
+        } catch (error) {
+            console.error("Błąd pobierania:", error);
+            container.innerHTML = "<span style='color: #ff4444;'>BŁĄD: Nie można połączyć się z bazą danych w USA. Sprawdź certyfikat lub logi Rendera.</span>";
+        }
+    }
+
+    // Pierwsze pobranie danych
+    pobierzLogi();
+
+    // Automatyczne odświeżanie co 10 sekund
+    setInterval(pobierzLogi, 10000);
+</script>
 
 </body>
 </html>
