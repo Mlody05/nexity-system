@@ -1,3 +1,4 @@
+
 const express = require('express');
 const { DocumentStore } = require('ravendb');
 const path = require('path');
@@ -6,23 +7,23 @@ const fs = require('fs');
 const app = express();
 const port = process.env.PORT || 10000;
 
-// DOKŁADNE PARAMETRY
 const dbUrl = 'https://a.free.nexity.ravendb.cloud';
 const dbName = 'NexityDB';
-const certName = 'free.nexity.client.certificate.2026-02-24.pfx'; // Twoja nazwa pliku
 
-const certPath = path.join(__dirname, certName);
+// AUTOMATYCZNE SZUKANIE PLIKU .PFX
+const files = fs.readdirSync(__dirname);
+const certFile = files.find(f => f.toLowerCase().endsWith('.pfx'));
 
 let store = null;
 
-// 1. Sprawdzenie czy plik istnieje
-if (fs.existsSync(certPath)) {
+if (certFile) {
     console.log(`--- SYSTEM NEXITY ---`);
-    console.log(`Zlokalizowano certyfikat: ${certName}`);
+    console.log(`WYKRYTO PLIK: ${certFile}`);
     
     try {
+        const certPath = path.join(__dirname, certFile);
         const certBuffer = fs.readFileSync(certPath);
-        
+
         store = new DocumentStore(dbUrl, dbName);
         store.authOptions = {
             certificate: certBuffer,
@@ -30,33 +31,31 @@ if (fs.existsSync(certPath)) {
         };
         
         store.initialize();
-        console.log("Inicjalizacja bazy zakończona pomyślnie.");
+        console.log("STATUS: Baza danych zainicjalizowana.");
     } catch (err) {
-        console.error(`BŁĄD ODCZYTU CERTYFIKATU: ${err.message}`);
+        console.error(`BŁĄD ODCZYTU: ${err.message}`);
     }
 } else {
-    console.error(`ALARM: Nie znaleziono pliku ${certName} na GitHubie!`);
-    console.log("Pliki które widzę:", fs.readdirSync(__dirname));
+    console.error("ALARM: Nie znaleziono żadnego pliku .pfx!");
+    console.log("Pliki na serwerze:", files);
 }
 
 app.use(express.static(__dirname));
 
-// 2. Pobieranie danych
 app.get('/api/logs', async (req, res) => {
-    if (!store) return res.status(500).json({ error: "Brak zainicjalizowanej bazy" });
+    if (!store) return res.status(500).json({ error: "Brak certyfikatu" });
     
     try {
         const session = store.openSession();
-        // Pobieramy ostatnie zdarzenia
         const logs = await session.query({ collection: 'Logs' })
             .orderByDescending('Timestamp')
             .take(20)
             .all();
             
-        console.log(`POBRANO DANE: ${logs.length} pozycji.`);
+        console.log(`POBRANO: ${logs.length} logów.`);
         res.json(logs);
     } catch (err) {
-        console.log("BŁĄD KOMUNIKACJI Z USA:", err.message);
+        console.log("BŁĄD KOMUNIKACJI:", err.message);
         res.status(500).json({ error: err.message });
     }
 });
@@ -67,10 +66,9 @@ app.get('/', (req, res) => {
 
 app.listen(port, () => {
     console.log(`====================================`);
-    console.log(`NEXITY SYSTEM ONLINE NA PORCIE ${port}`);
+    console.log(`NEXITY ONLINE | PORT: ${port}`);
     console.log(`====================================`);
 });
-
 
 
 
