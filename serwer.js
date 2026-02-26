@@ -6,64 +6,59 @@ const fs = require('fs');
 const app = express();
 const port = process.env.PORT || 10000;
 
-// Konfiguracja bazy w USA
+// Parametry bazy
 const dbUrl = 'https://a.free.nexity.ravendb.cloud';
 const dbName = 'NexityDB';
 
-// Automatyczne wykrywanie pliku certyfikatu na GitHubie
+// 1. Szukamy pliku .pfx w folderze
 const files = fs.readdirSync(__dirname);
-const certFile = files.find(f => f.includes('nexity') && (f.endsWith('.key') || f.endsWith('.pem')));
+const certFile = files.find(f => f.toLowerCase().endsWith('.pfx'));
 
 let store = null;
 
 if (certFile) {
-    console.log(`--- SYSTEM NEXITY ---`);
-    console.log(`PRÓBA POŁĄCZENIA Z: ${dbUrl}`);
-    console.log(`UŻYTY CERTYFIKAT: ${certFile}`);
-
+    console.log(`--- NEXITY BOOT ---`);
+    console.log(`WYKRYTO CERTYFIKAT PFX: ${certFile}`);
+    
     try {
         const certPath = path.join(__dirname, certFile);
         const certBuffer = fs.readFileSync(certPath);
 
+        // Inicjalizacja z obsługą PFX
         store = new DocumentStore(dbUrl, dbName);
         store.authOptions = {
             certificate: certBuffer,
-            type: 'pem' // Większość plików .key działa jako 'pem'
+            type: 'pfx' // Wymuszenie formatu PFX
         };
-
+        
         store.initialize();
-        console.log(`STATUS: Autoryzacja wysłana do bazy.`);
+        console.log(`STATUS: Autoryzacja PFX załadowana.`);
     } catch (err) {
-        console.error(`BŁĄD STARTU: ${err.message}`);
+        console.error(`BŁĄD ŁADOWANIA PFX: ${err.message}`);
     }
 } else {
-    console.error(`ALARM: Brak pliku certyfikatu (np. free.nexity.client.certificate.key) na GitHub!`);
+    console.error(`ALARM: Brak pliku .pfx na GitHubie! Prześlij plik z końcówką .pfx.`);
 }
 
 app.use(express.static(__dirname));
 
-// Endpoint do pobierania logów
+// Główny endpoint danych
 app.get('/api/logs', async (req, res) => {
-    if (!store) return res.status(500).json({ error: "Brak inicjalizacji bazy" });
+    if (!store) return res.status(500).json({ error: "Brak inicjalizacji PFX" });
 
     try {
         const session = store.openSession();
-        // Pobieramy ostatnie 25 zdarzeń
+        // Pobieramy ostatnie logi
         const logs = await session.query({ collection: 'Logs' })
             .orderByDescending('Timestamp')
             .take(25)
             .all();
 
-        console.log(`POBRANO DANE: ${logs.length} pozycji.`);
+        console.log(`SUKCES: Pobrano ${logs.length} logów z USA.`);
         res.json(logs);
     } catch (err) {
         console.error(`BŁĄD KOMUNIKACJI: ${err.message}`);
-        // Jeśli baza mówi Forbidden, zwracamy jasny komunikat
-        if (err.message.includes("Forbidden")) {
-            res.status(403).json({ error: "Baza odrzuciła klucz. Sprawdź czy klucz jest dodany w panelu RavenDB." });
-        } else {
-            res.status(500).json({ error: err.message });
-        }
+        res.status(500).json({ error: "Błąd bazy (sprawdź czy certyfikat PFX jest aktywny w panelu RavenDB)" });
     }
 });
 
@@ -73,8 +68,9 @@ app.get('/', (req, res) => {
 
 app.listen(port, () => {
     console.log(`====================================`);
-    console.log(`SYSTEM NEXITY AKTYWNY NA PORCIE ${port}`);
+    console.log(`NEXITY SYSTEM GOTOWY | PORT: ${port}`);
     console.log(`====================================`);
 });
+
 
 
