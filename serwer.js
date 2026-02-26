@@ -6,46 +6,64 @@ const fs = require('fs');
 const app = express();
 const port = process.env.PORT || 10000;
 
-// PARAMETRY TWOJEGO SYSTEMU
+// Konfiguracja bazy w USA
 const dbUrl = 'https://a.free.nexity.ravendb.cloud';
 const dbName = 'NexityDB';
-const certName = 'free.nexity.client.certificate.key'; // Upewnij się, że to DOKŁADNA nazwa na GitHubie
 
-const certPath = path.join(__dirname, certName);
+// Automatyczne wykrywanie pliku certyfikatu na GitHubie
+const files = fs.readdirSync(__dirname);
+const certFile = files.find(f => f.includes('nexity') && (f.endsWith('.key') || f.endsWith('.pem')));
 
-// 1. Sprawdzenie czy plik fizycznie istnieje przed startem
-if (!fs.existsSync(certPath)) {
-    console.error(`!!! ALARM: Plik ${certName} NIE ISTNIEJE w folderze serwera !!!`);
+let store = null;
+
+if (certFile) {
+    console.log(`--- SYSTEM NEXITY ---`);
+    console.log(`PRÓBA POŁĄCZENIA Z: ${dbUrl}`);
+    console.log(`UŻYTY CERTYFIKAT: ${certFile}`);
+
+    try {
+        const certPath = path.join(__dirname, certFile);
+        const certBuffer = fs.readFileSync(certPath);
+
+        store = new DocumentStore(dbUrl, dbName);
+        store.authOptions = {
+            certificate: certBuffer,
+            type: 'pem' // Większość plików .key działa jako 'pem'
+        };
+
+        store.initialize();
+        console.log(`STATUS: Autoryzacja wysłana do bazy.`);
+    } catch (err) {
+        console.error(`BŁĄD STARTU: ${err.message}`);
+    }
+} else {
+    console.error(`ALARM: Brak pliku certyfikatu (np. free.nexity.client.certificate.key) na GitHub!`);
 }
-
-// 2. Konfiguracja Store z wymuszonym certyfikatem
-const authOptions = {
-    certificate: fs.readFileSync(certPath),
-    type: 'pem'
-};
-
-const store = new DocumentStore(dbUrl, dbName);
-store.authOptions = authOptions;
-store.initialize();
-
-console.log("NEXITY: System autoryzacji zainicjalizowany.");
 
 app.use(express.static(__dirname));
 
-// 3. Endpoint pobierania danych
+// Endpoint do pobierania logów
 app.get('/api/logs', async (req, res) => {
+    if (!store) return res.status(500).json({ error: "Brak inicjalizacji bazy" });
+
     try {
         const session = store.openSession();
-        // Najbezpieczniejsza metoda pobierania danych
+        // Pobieramy ostatnie 25 zdarzeń
         const logs = await session.query({ collection: 'Logs' })
             .orderByDescending('Timestamp')
-            .take(20)
+            .take(25)
             .all();
-            
+
+        console.log(`POBRANO DANE: ${logs.length} pozycji.`);
         res.json(logs);
     } catch (err) {
-        console.error("BŁĄD KOMUNIKACJI Z USA:", err.message);
-        res.status(500).json({ error: "Błąd autoryzacji certyfikatu" });
+        console.error(`BŁĄD KOMUNIKACJI: ${err.message}`);
+        // Jeśli baza mówi Forbidden, zwracamy jasny komunikat
+        if (err.message.includes("Forbidden")) {
+            res.status(403).json({ error: "Baza odrzuciła klucz. Sprawdź czy klucz jest dodany w panelu RavenDB." });
+        } else {
+            res.status(500).json({ error: err.message });
+        }
     }
 });
 
@@ -54,7 +72,9 @@ app.get('/', (req, res) => {
 });
 
 app.listen(port, () => {
-    console.log(`>>> SYSTEM NEXITY DZIAŁA NA PORCIE ${port} <<<`);
+    console.log(`====================================`);
+    console.log(`SYSTEM NEXITY AKTYWNY NA PORCIE ${port}`);
+    console.log(`====================================`);
 });
 
 
